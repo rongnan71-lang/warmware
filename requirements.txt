@@ -1,0 +1,14 @@
+# WarmWare 运行时依赖
+# psutil：跨平台读取 CPU/内存/负载（核心依赖）
+# 其余全部使用 Python 标准库，无需额外安装。
+
+psutil>=5.9
+
+# 可选的 GPU 产热（多后端，不装也能运行，仅 CPU 产热）：
+#   * NVIDIA 独显 → 用 CUDA（torch）。安装：
+#       pip install torch --index-url https://download.pytorch.org/whl/cu121
+#   * AMD/Intel/摩尔线程 → 用 Vulkan compute（需系统装 Vulkan 驱动 + vkcube 或打包带 runner）
+#   * 都没有 → 自动只用 CPU 产热（多进程绕开 GIL，一样能压满）
+#
+# 注意：打包 exe 时若不需要 GPU，用 build_exe_cpu.bat（体积小约 20MB）；
+#       需要 GPU 用 build_exe.bat（含 torch，约 1GB）。
