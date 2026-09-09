@@ -222,6 +222,34 @@ class GpuHeater:
     def set_factor(self, f: float):
         self.factor = max(0.0, min(1.0, f))
 
+    def current_utilization(self) -> float:
+        """返回 GPU 当前占用估算 [0,1]，供安全循环做负载保护与自我扣除。
+
+        - cuda：优先 nvidia-smi 实测；失败回退为 factor（自我上报）
+        - vulkan：返回 factor——Vulkan 在烧就约占 factor（无跨厂商遥测接口，
+          由引擎自己上报，避免控制器"盲烧"）
+        - 未运行 / 无后端：0
+        """
+        if not self.running or not self.available:
+            return 0.0
+        if self.backend == "cuda":
+            try:
+                import subprocess
+                r = subprocess.run(
+                    ["nvidia-smi", "--query-gpu=utilization.gpu",
+                     "--format=csv,noheader,nounits"],
+                    capture_output=True, text=True, timeout=2,
+                    creationflags=(subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0),
+                )
+                if r.returncode == 0 and r.stdout.strip():
+                    return max(0.0, min(1.0, float(r.stdout.strip()) / 100.0))
+            except Exception:
+                pass
+            return self.factor   # 实测失败，回退自我上报
+        if self.backend == "vulkan":
+            return self.factor
+        return 0.0
+
     # ------------------------------------------------------------------
     def _burn(self):
         if self.backend == "cuda":

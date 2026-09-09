@@ -66,7 +66,7 @@ class SafetyGuardian:
 
         # —— v2.3 自我干扰修复 ——
         # 引擎引用：安全循环需要知道"暖炉自己贡献了多少负载"，
-        # 从读数里扣除，避免把自己的高占用误判为"系统资源紧张"。
+        # 从读数里扣除，避免把自己的高占用误判为系统资源紧张。
         self._engine = None
         # EMA 平滑状态：滤掉 psutil 读数的抖动
         self._ema = None
@@ -103,7 +103,16 @@ class SafetyGuardian:
             return lambda: [0.0] * max(1, self.caps.cpu_logical_cores)
 
     def _read_gpu_usage(self) -> float:
-        """GPU 使用率 [0,1]。无 GPU 或读取失败返回 0。"""
+        """GPU 使用率 [0,1]。
+
+        有引擎且 GPU 后端在跑时，用引擎上报的占用（Vulkan/CUDA 都准）；
+        否则（无引擎，如启动基准线采样）回退 nvidia-smi 实测。
+        """
+        # 引擎在跑 GPU → 用引擎上报，避免 Vulkan 后端"盲烧"
+        eng = self._engine
+        if eng is not None and eng.running and eng.gpu.available:
+            return eng.gpu.current_utilization()
+        # 无引擎 → 回退 nvidia-smi 实测（NVIDIA）
         if not self.caps.gpu_available:
             return 0.0
         try:
@@ -113,7 +122,7 @@ class SafetyGuardian:
                 capture_output=True, text=True, timeout=3,
                 creationflags=(subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0),
             )
-            if result.returncode == 0:
+            if result.returncode == 0 and result.stdout.strip():
                 val = float(result.stdout.strip().splitlines()[0].strip())
                 return max(0.0, min(1.0, val / 100.0))
         except Exception:
